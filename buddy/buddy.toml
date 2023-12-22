@@ -1,0 +1,15 @@
+name = "buddy-01"
+model = "gpt-3.5-turbo-1106"
+instructions_file = "instructions.md"
+
+[[file_bundles]]
+bundle_name = "source-code"
+src_dir = "../src"
+src_globs = ["**/*.rs"]
+dst_ext = "rs"
+
+[[file_bundles]]
+bundle_name = "knowledge"
+src_dir = "files"
+src_globs = ["*.md"]
+dst_ext = "md"
