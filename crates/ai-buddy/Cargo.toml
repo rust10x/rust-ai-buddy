@@ -1,0 +1,39 @@
+[package]
+name = "ai-buddy"
+version = "0.0.2"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["Jeremy Chone <jeremy.chone@gmail.com>"]
+description = "On-Device centric multi-provider AI Assistant library to be used in CLI or on-device applications."
+homepage = "https://github.com/rust10x/rust-ai-buddy"
+repository = "https://github.com/rust10x/rust-ai-buddy"
+keywords = [
+	"openai",
+	"ai",
+	"machine-learning"
+]
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# -- Async
+tokio = { version = "1", features = ["full"] }
+# -- AI
+async-openai = "0.17"
+# -- D/Serialize
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# -- Cli
+dialoguer = "0.11"
+console = "0.15"
+textwrap = "0.16"
+# -- Files
+walkdir = "2"
+globset = "0.4"
+# -- Others
+derive_more = {version = "1.0.0-beta", features = ["from", "display", "deref"] }

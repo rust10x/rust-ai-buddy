@@ -1,0 +1,34 @@
+[package]
+name = "ai-buddy-cli"
+version = "0.0.2"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["Jeremy Chone <jeremy.chone@gmail.com>"]
+description = "Personal AI Assistant CLI using the multi-ai-provider ai-buddy library."
+homepage = "https://github.com/rust10x/rust-ai-buddy"
+repository = "https://github.com/rust10x/rust-ai-buddy"
+keywords = [
+	"openai",
+	"ai",
+	"machine-learning",
+	"CLI"
+]
+
+[[bin]]
+name = "buddy"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+# -- App Libs
+ai-buddy = { version = "0.0.2",  path = "../ai-buddy"}
+# -- Async
+tokio = { version = "1", features = ["full"] }
+# -- Cli
+dialoguer = "0.11"
+console = "0.15"
+textwrap = "0.16"
+# -- Others
+derive_more = {version = "1.0.0-beta", features = ["from", "display", "deref"] }

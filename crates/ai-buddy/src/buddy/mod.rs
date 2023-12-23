@@ -1,11 +1,29 @@
+//! The `buddy` module handles everything related to the Buddy construct.
+//!
+//! A Buddy is an abstraction above an assistant, offering high-level functionalities
+//! for on-device applications (CLI or UI-APP).
+//!
+//! Buddies are scoped to on-device use because they're not designed to handle multi-user requests,
+//! but rather tailored for single-user interactions.
+//!
+//! Single-user requests don't imply a sequential-request design; they might support request concurrency under certain conditions.
+//! However, due to the nature of AI Conversation/Thread contexts, most requests for a single "Buddy" need to be sequential.
+//!
+//! Currently, the API doesn't enforce a "sequential" scheme, but it will eventually, while remaining transparent to the API user.
+
 // region:    --- Modules
 
 mod config;
+mod event;
 
-use crate::ais::asst::{self, AsstId, ThreadId};
-use crate::ais::{new_oa_client, OaClient};
+pub use event::BuddyEvent;
+
+use crate::ais::asst::{self};
+use crate::ais::{new_ais_client, AisClient, AsstId, ThreadId};
 use crate::buddy::config::Config;
-use crate::utils::cli::ico_check;
+use tokio::sync::broadcast::Receiver;
+// use crate::event::EventBus;
+use crate::event::{Event, EventBus};
 use crate::utils::files::{
 	bundle_to_file, ensure_dir, list_files, load_from_json, load_from_toml,
 	read_to_string, save_to_json,
@@ -23,9 +41,10 @@ const BUDDY_TOML: &str = "buddy.toml";
 #[derive(Debug)]
 pub struct Buddy {
 	dir: PathBuf,
-	oac: OaClient,
+	ais_client: AisClient,
 	asst_id: AsstId,
 	config: Config,
+	event_bus: EventBus,
 }
 
 #[derive(Debug, From, Deref, Deserialize, Serialize)]
@@ -33,32 +52,34 @@ pub struct Conv {
 	thread_id: ThreadId,
 }
 
-/// Public functions
+/// Constructor functions
 impl Buddy {
-	pub fn name(&self) -> &str {
-		&self.config.name
-	}
-
 	pub async fn init_from_dir(
 		dir: impl AsRef<Path>,
 		recreate_asst: bool,
+		event_bus: Option<EventBus>,
 	) -> Result<Self> {
 		let dir = dir.as_ref();
+
+		let event_bus = event_bus.unwrap_or_else(EventBus::new);
 
 		// -- Load from the directory
 		let config: Config = load_from_toml(dir.join(BUDDY_TOML))?;
 
 		// -- Get or Create the OpenAI Assistant
-		let oac = new_oa_client()?;
+		let ais_client = new_ais_client(event_bus.clone())?;
+
 		let asst_id =
-			asst::load_or_create(&oac, (&config).into(), recreate_asst).await?;
+			asst::load_or_create(&ais_client, (&config).into(), recreate_asst)
+				.await?;
 
 		// -- Create buddy
 		let buddy = Buddy {
 			dir: dir.to_path_buf(),
-			oac,
+			ais_client,
 			asst_id,
 			config,
+			event_bus,
 		};
 
 		// -- Upload instructions
@@ -69,14 +90,25 @@ impl Buddy {
 
 		Ok(buddy)
 	}
+}
+
+/// Public functions
+impl Buddy {
+	pub fn name(&self) -> &str {
+		&self.config.name
+	}
+
+	pub fn subscribe(&self) -> Result<Receiver<Event>> {
+		self.event_bus.subscribe()
+	}
 
 	pub async fn upload_instructions(&self) -> Result<bool> {
 		let file = self.dir.join(&self.config.instructions_file);
 		if file.exists() {
 			let inst_content = read_to_string(&file)?;
-			asst::upload_instructions(&self.oac, &self.asst_id, inst_content)
+			asst::upload_instructions(&self.ais_client, &self.asst_id, inst_content)
 				.await?;
-			println!("{} Instructions uploaded", ico_check());
+			self.event_bus.send(BuddyEvent::InstUploaded)?;
 			Ok(true)
 		} else {
 			Ok(false)
@@ -135,7 +167,7 @@ impl Buddy {
 
 					// Upload
 					let (_, uploaded) = asst::upload_file_by_name(
-						&self.oac,
+						&self.ais_client,
 						&self.asst_id,
 						&bundle_file,
 						force_reupload,
@@ -160,14 +192,14 @@ impl Buddy {
 		}
 
 		let conv = if let Ok(conv) = load_from_json::<Conv>(&conv_file) {
-			asst::get_thread(&self.oac, &conv.thread_id)
+			asst::get_thread(&self.ais_client, &conv.thread_id)
 				.await
 				.map_err(|_| format!("Cannot find thread_id for {:?} ", conv))?;
-			println!("{} Conversation loaded", ico_check());
+			self.event_bus.send(BuddyEvent::ConvLoaded)?;
 			conv
 		} else {
-			let thread_id = asst::create_thread(&self.oac).await?;
-			println!("{} Conversation created", ico_check());
+			let thread_id = asst::create_thread(&self.ais_client).await?;
+			self.event_bus.send(BuddyEvent::ConvCreated)?;
 			let conv = thread_id.into();
 			save_to_json(&conv_file, &conv)?;
 			conv
@@ -177,9 +209,13 @@ impl Buddy {
 	}
 
 	pub async fn chat(&self, conv: &Conv, msg: &str) -> Result<String> {
-		let res =
-			asst::run_thread_msg(&self.oac, &self.asst_id, &conv.thread_id, msg)
-				.await?;
+		let res = asst::run_thread_msg(
+			&self.ais_client,
+			&self.asst_id,
+			&conv.thread_id,
+			msg,
+		)
+		.await?;
 
 		Ok(res)
 	}

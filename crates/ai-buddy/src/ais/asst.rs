@@ -1,8 +1,5 @@
 use crate::ais::msg::{get_text_content, user_msg};
-use crate::ais::OaClient;
-use crate::utils::cli::{
-	ico_check, ico_deleted_ok, ico_err, ico_uploaded, ico_uploading,
-};
+use crate::ais::{AisClient, AisEvent, AsstId, AsstRef, FileId, FileRef, ThreadId};
 use crate::utils::files::XFile;
 use crate::Result;
 use async_openai::types::{
@@ -11,8 +8,6 @@ use async_openai::types::{
 	CreateThreadRequest, ModifyAssistantRequest, RunStatus, ThreadObject,
 };
 use console::Term;
-use derive_more::{Deref, Display, From};
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::time::Duration;
@@ -32,65 +27,74 @@ pub struct CreateConfig {
 	pub model: String,
 }
 
-#[derive(Debug, From, Deref, Display)]
-pub struct AsstId(String);
-
-#[derive(Debug, From, Deref, Display, Serialize, Deserialize)]
-pub struct ThreadId(String);
-
-#[derive(Debug, From, Deref, Display)]
-pub struct FileId(String);
-
 // endregion: --- Types
 
 // region:    --- Asst CRUD
 
-pub async fn create(oac: &OaClient, config: CreateConfig) -> Result<AsstId> {
+pub async fn create(ais: &AisClient, config: &CreateConfig) -> Result<AsstId> {
+	let oac = ais.oa_client();
+
 	let oa_assts = oac.assistants();
 
 	let asst_obj = oa_assts
 		.create(CreateAssistantRequest {
-			model: config.model,
-			name: Some(config.name),
+			model: config.model.clone(),
+			name: Some(config.name.clone()),
 			tools: Some(vec![AssistantToolsRetrieval::default().into()]),
 			..Default::default()
 		})
 		.await?;
 
-	Ok(asst_obj.id.into())
+	let asst_id: AsstId = asst_obj.id.into();
+
+	ais.event_bus().send(AisEvent::AsstCreated(AsstRef::new(
+		&config.name,
+		asst_id.clone(),
+	)))?;
+
+	Ok(asst_id)
 }
 
 pub async fn load_or_create(
-	oac: &OaClient,
+	ais: &AisClient,
 	config: CreateConfig,
 	recreate: bool,
 ) -> Result<AsstId> {
-	let asst_obj = first_by_name(oac, &config.name).await?;
+	let asst_obj = first_by_name(ais, &config.name).await?;
 	let mut asst_id = asst_obj.map(|o| AsstId::from(o.id));
 
 	// -- Delete asst if recreate true and asst_id
 	if let (true, Some(asst_id_ref)) = (recreate, asst_id.as_ref()) {
-		delete(oac, asst_id_ref).await?;
+		delete(ais, asst_id_ref).await?;
+		ais.event_bus().send(AisEvent::AsstDeleted(AsstRef::new(
+			&config.name,
+			asst_id_ref.clone(),
+		)))?;
 		asst_id.take();
-		println!("{} Assistant {} deleted", ico_deleted_ok(), config.name);
 	}
 
 	// -- Create if needed
+
 	if let Some(asst_id) = asst_id {
-		println!("{} Assistant {} loaded", ico_check(), config.name);
+		ais.event_bus().send(AisEvent::AsstLoaded(AsstRef::new(
+			&config.name,
+			asst_id.clone(),
+		)))?;
+
 		Ok(asst_id)
 	} else {
-		let asst_name = config.name.clone();
-		let asst_id = create(oac, config).await?;
-		println!("{} Assistant {} created", ico_check(), asst_name);
+		let asst_id = create(ais, &config).await?;
+
 		Ok(asst_id)
 	}
 }
 
 pub async fn first_by_name(
-	oac: &OaClient,
+	ais: &AisClient,
 	name: &str,
 ) -> Result<Option<AssistantObject>> {
+	let oac = ais.oa_client();
+
 	let oa_assts = oac.assistants();
 
 	let assts = oa_assts.list(DEFAULT_QUERY).await?.data;
@@ -103,10 +107,12 @@ pub async fn first_by_name(
 }
 
 pub async fn upload_instructions(
-	oac: &OaClient,
+	ais: &AisClient,
 	asst_id: &AsstId,
 	inst_content: String,
 ) -> Result<()> {
+	let oac = ais.oa_client();
+
 	let oa_assts = oac.assistants();
 	let modif = ModifyAssistantRequest {
 		instructions: Some(inst_content),
@@ -117,17 +123,26 @@ pub async fn upload_instructions(
 	Ok(())
 }
 
-pub async fn delete(oac: &OaClient, asst_id: &AsstId) -> Result<()> {
+pub async fn delete(ais: &AisClient, asst_id: &AsstId) -> Result<()> {
+	let oac = ais.oa_client();
+
 	let oa_assts = oac.assistants();
 	let oa_files = oac.files();
 
 	// -- First delete the files associated to this assistant.
-	for file_id in get_files_hashmap(oac, asst_id).await?.into_values() {
+	for (file_name, file_id) in get_files_hashmap(ais, asst_id).await?.into_iter() {
 		let del_res = oa_files.delete(&file_id).await;
 		// NOTE: Might be already deleted, that's ok for now.
-		if del_res.is_ok() {
-			println!("{} file deleted - {file_id}", ico_deleted_ok());
-		}
+		match del_res {
+			Ok(_) => ais
+				.event_bus()
+				.send(AisEvent::OrgFileDeleted(FileRef::new(file_name, file_id)))?,
+
+			Err(err) => ais.event_bus().send(AisEvent::OrgFileCantDelete {
+				file_ref: FileRef::new(file_name, file_id),
+				cause: err.to_string(),
+			})?,
+		};
 	}
 
 	// Note: No need to delete assistant files since we delete the assistant.
@@ -142,7 +157,9 @@ pub async fn delete(oac: &OaClient, asst_id: &AsstId) -> Result<()> {
 
 // region:    --- Thread
 
-pub async fn create_thread(oac: &OaClient) -> Result<ThreadId> {
+pub async fn create_thread(ais: &AisClient) -> Result<ThreadId> {
+	let oac = ais.oa_client();
+
 	let oa_threads = oac.threads();
 
 	let res = oa_threads
@@ -155,9 +172,11 @@ pub async fn create_thread(oac: &OaClient) -> Result<ThreadId> {
 }
 
 pub async fn get_thread(
-	oac: &OaClient,
+	ais: &AisClient,
 	thread_id: &ThreadId,
 ) -> Result<ThreadObject> {
+	let oac = ais.oa_client();
+
 	let oa_threads = oac.threads();
 
 	let thread_obj = oa_threads.retrieve(thread_id).await?;
@@ -166,11 +185,13 @@ pub async fn get_thread(
 }
 
 pub async fn run_thread_msg(
-	oac: &OaClient,
+	ais: &AisClient,
 	asst_id: &AsstId,
 	thread_id: &ThreadId,
 	msg: &str,
 ) -> Result<String> {
+	let oac = ais.oa_client();
+
 	let msg = user_msg(msg);
 
 	// -- Attach message to thread
@@ -192,7 +213,7 @@ pub async fn run_thread_msg(
 		match run.status {
 			RunStatus::Completed => {
 				term.write_str("\n")?;
-				return get_first_thread_msg_content(oac, thread_id).await;
+				return get_first_thread_msg_content(ais, thread_id).await;
 			}
 			RunStatus::Queued | RunStatus::InProgress => (),
 			other => {
@@ -206,9 +227,11 @@ pub async fn run_thread_msg(
 }
 
 pub async fn get_first_thread_msg_content(
-	oac: &OaClient,
+	ais: &AisClient,
 	thread_id: &ThreadId,
 ) -> Result<String> {
+	let oac = ais.oa_client();
+
 	static QUERY: [(&str, &str); 1] = [("limit", "1")];
 
 	let messages = oac.threads().messages(thread_id).list(&QUERY).await?;
@@ -229,9 +252,11 @@ pub async fn get_first_thread_msg_content(
 
 /// Returns the file id by file name hashmap.
 pub async fn get_files_hashmap(
-	oac: &OaClient,
+	ais: &AisClient,
 	asst_id: &AsstId,
 ) -> Result<HashMap<String, FileId>> {
+	let oac = ais.oa_client();
+
 	// -- Get all asst files (files do not have .name)
 	let oas_assts = oac.assistants();
 	let oa_asst_files = oas_assts.files(asst_id);
@@ -259,13 +284,15 @@ pub async fn get_files_hashmap(
 ///
 /// Returns `(FileId, has_been_uploaded)`
 pub async fn upload_file_by_name(
-	oac: &OaClient,
+	ais: &AisClient,
 	asst_id: &AsstId,
 	file: &Path,
 	force: bool,
 ) -> Result<(FileId, bool)> {
+	let oac = ais.oa_client();
+
 	let file_name = file.x_file_name();
-	let mut file_id_by_name = get_files_hashmap(oac, asst_id).await?;
+	let mut file_id_by_name = get_files_hashmap(ais, asst_id).await?;
 
 	let file_id = file_id_by_name.remove(file_name);
 
@@ -281,36 +308,37 @@ pub async fn upload_file_by_name(
 		// -- Delete the org file
 		let oa_files = oac.files();
 		if let Err(err) = oa_files.delete(&file_id).await {
-			println!(
-				"{} Can't delete file '{}'\n    cause: {}",
-				ico_err(),
-				file.to_string_lossy(),
-				err
-			);
+			ais.event_bus().send(AisEvent::OrgFileCantDelete {
+				file_ref: FileRef::new(file.to_string_lossy(), file_id.clone()),
+				cause: err.to_string(),
+			})?;
 		}
 
 		// -- Delete the asst_file association
 		let oa_assts = oac.assistants();
 		let oa_assts_files = oa_assts.files(asst_id);
 		if let Err(err) = oa_assts_files.delete(&file_id).await {
-			println!(
-				"{} Can't remove assistant file '{}'\n    cause: {}",
-				ico_err(),
-				file.x_file_name(),
-				err
-			);
+			ais.event_bus().send(AisEvent::AsstFileCantRemove {
+				asst_id: asst_id.clone(),
+				file_id: file_id.clone(),
+				cause: err.to_string(),
+			})?;
 		}
 	}
 
 	// -- Upload and attach the file.
-	let term = Term::stdout();
+	// let term = Term::stdout();
 
 	// Print uploading.
-	term.write_line(&format!(
-		"{} Uploading file '{}'",
-		ico_uploading(),
-		file.x_file_name()
-	))?;
+	// term.write_line(&format!(
+	// 	"{} Uploading file '{}'",
+	// 	ico_uploading(),
+	// 	file.x_file_name()
+	// ))?;
+
+	ais.event_bus().send(AisEvent::OrgFileUploading {
+		file_name: file.x_file_name().to_string(),
+	})?;
 
 	// Upload file.
 	let oa_files = oac.files();
@@ -322,12 +350,18 @@ pub async fn upload_file_by_name(
 		.await?;
 
 	// Update print.
-	term.clear_last_lines(1)?;
-	term.write_line(&format!(
-		"{} Uploaded file '{}'",
-		ico_uploaded(),
-		file.x_file_name()
-	))?;
+	ais.event_bus()
+		.send(AisEvent::OrgFileUploaded(FileRef::new(
+			file.to_string_lossy(),
+			oa_file.id.clone().into(),
+		)))?;
+
+	// term.clear_last_lines(1)?;
+	// term.write_line(&format!(
+	// 	"{} Uploaded file '{}'",
+	// 	ico_uploaded(),
+	// 	file.x_file_name()
+	// ))?;
 
 	// Attach file to assistant.
 	let oa_assts = oac.assistants();

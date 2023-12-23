@@ -4,7 +4,7 @@ instructions_file = "instructions.md"
 
 [[file_bundles]]
 bundle_name = "source-code"
-src_dir = "../src"
+src_dir = "../crates"
 src_globs = ["**/*.rs"]
 dst_ext = "rs"
 

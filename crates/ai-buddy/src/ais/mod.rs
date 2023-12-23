@@ -1,8 +1,21 @@
+//! The `ais` module is designed to be the interface with specific AI services, such as OpenAI.
+//!
+//! Currently, it is a mono-provider implementation with OpenAI only, but the goal
+//! is to be a multi-provider, supporting ollama, lamafile, gemini, etc...
+//!
+//! Currently, it is mostly designed as an assistant interface, but this might or might not change over time.
+
 // region:    --- Modules
 
 pub mod asst;
+mod event;
 pub mod msg;
+mod types;
 
+pub use event::AisEvent;
+pub use types::*;
+
+use crate::event::EventBus;
 use crate::utils::files::get_glob_set;
 use crate::Result;
 use async_openai::config::OpenAIConfig;
@@ -16,9 +29,29 @@ const ENV_OPENAI_API_KEY: &str = "OPENAI_API_KEY";
 
 pub type OaClient = Client<OpenAIConfig>;
 
-pub fn new_oa_client() -> Result<OaClient> {
+/// Wraps the async-openai client and provides additional functionalities
+/// such as an event bus.
+#[derive(Debug)]
+pub struct AisClient {
+	oa_client: OaClient,
+	event_bus: EventBus,
+}
+
+impl AisClient {
+	pub fn oa_client(&self) -> &OaClient {
+		&self.oa_client
+	}
+	pub fn event_bus(&self) -> &EventBus {
+		&self.event_bus
+	}
+}
+
+pub fn new_ais_client(event_bus: EventBus) -> Result<AisClient> {
 	if std::env::var(ENV_OPENAI_API_KEY).is_ok() {
-		Ok(Client::new())
+		Ok(AisClient {
+			oa_client: Client::new(),
+			event_bus,
+		})
 	} else {
 		println!("No {ENV_OPENAI_API_KEY} env variable. Please set it.");
 

@@ -1,5 +1,5 @@
 use crate::Result;
-use console::{style, Style, StyledObject};
+use console::{style, Style, StyledObject, Term};
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Input;
 
@@ -12,6 +12,7 @@ pub fn prompt(text: &str) -> Result<String> {
 		..ColorfulTheme::default()
 	};
 
+	Term::stdout().write_line("")?;
 	let input = Input::with_theme(&theme);
 	let res = input.with_prompt(text).interact_text()?;
 
