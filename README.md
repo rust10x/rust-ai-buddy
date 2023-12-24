@@ -31,11 +31,11 @@ The concept of Rust AI-Buddy is to leverage existing AI remote and cloud service
 
 `ai-buddy` is a multi-crate codebase that includes the following crates:
 
-| Crate Name             | Description                                    |
-|------------------------|------------------------------------------------|
-| `/crates/ai-buddy`     | The core/main library used by ai-buddy-cli     |
-| `/crates/ai-buddy-cli` | The CLI for ai-buddy                           |
-| `/crates/ai-buddy-app` | (Upcoming) Tauri App (might be different repo) |
+| Crate Name             | Description                                |
+|------------------------|--------------------------------------------|
+| `/crates/ai-buddy`     | The core/main library used by ai-buddy-cli |
+| `/crates/ai-buddy-cli` | The CLI for ai-buddy (`buddy` binary name) |
+| `/crates/ai-buddy-app` | (Upcoming) Tauri App                       |
 
 <br />
 

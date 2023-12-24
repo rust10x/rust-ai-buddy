@@ -1,0 +1,9 @@
+[package]
+name = "ai-buddy-app"
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["Jeremy Chone <jeremy.chone@gmail.com>"]
+description = "Placeholder for the upcoming super cool ai-buddy Tauri Application."
+homepage = "https://github.com/rust10x/rust-ai-buddy"
+repository = "https://github.com/rust10x/rust-ai-buddy"
