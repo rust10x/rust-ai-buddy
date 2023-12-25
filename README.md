@@ -8,7 +8,7 @@ The vision for Rust AI-Buddy is to create a simple on-device AI assistant that l
 
 - E01 [GitHub Tag E01](https://github.com/rust10x/rust-ai-buddy/tree/E01) - [Coding a Rust OpenAI Assistant CLI from scratch](https://youtu.be/PHbCmIckV20)
 
-**NOTE:** The `main` branch has been updated with a `* MAJOR - Refactoring multiple crates` commit, which is a significant upgrade.
+**NOTE:** The `main` branch has been updated with a `* MAJOR - Refactoring multiple crates` commit and other significant upgrades.
 
 ## Cargo Commands
 

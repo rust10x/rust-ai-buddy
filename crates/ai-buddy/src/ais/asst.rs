@@ -327,15 +327,6 @@ pub async fn upload_file_by_name(
 	}
 
 	// -- Upload and attach the file.
-	// let term = Term::stdout();
-
-	// Print uploading.
-	// term.write_line(&format!(
-	// 	"{} Uploading file '{}'",
-	// 	ico_uploading(),
-	// 	file.x_file_name()
-	// ))?;
-
 	ais.event_bus().send(AisEvent::OrgFileUploading {
 		file_name: file.x_file_name().to_string(),
 	})?;
@@ -355,13 +346,6 @@ pub async fn upload_file_by_name(
 			file.to_string_lossy(),
 			oa_file.id.clone().into(),
 		)))?;
-
-	// term.clear_last_lines(1)?;
-	// term.write_line(&format!(
-	// 	"{} Uploaded file '{}'",
-	// 	ico_uploaded(),
-	// 	file.x_file_name()
-	// ))?;
 
 	// Attach file to assistant.
 	let oa_assts = oac.assistants();
