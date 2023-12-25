@@ -5,8 +5,6 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, From)]
 pub enum Error {
-	Custom(String),
-
 	// -- App Libs
 	#[from]
 	AIBuddy(ai_buddy::Error),
@@ -16,12 +14,6 @@ pub enum Error {
 	IO(io::Error),
 	#[from]
 	Dialoguer(dialoguer::Error),
-}
-
-impl From<&str> for Error {
-	fn from(val: &str) -> Self {
-		Error::Custom(val.to_string())
-	}
 }
 
 // region:    --- Error Boilerplate

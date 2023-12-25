@@ -28,7 +28,7 @@ use crate::utils::files::{
 	bundle_to_file, ensure_dir, list_files, load_from_json, load_from_toml,
 	read_to_string, save_to_json,
 };
-use crate::Result;
+use crate::{Error, Result};
 use derive_more::{Deref, From};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -131,9 +131,7 @@ impl Buddy {
 			let file_str = file.to_string_lossy();
 			// Safeguard
 			if !file_str.contains(".buddy") {
-				return Err(
-					format!("Error should not delete: '{}'", file_str).into()
-				);
+				return Err(Error::ShouldNotDeleteLocalFile(file_str.to_string()));
 			}
 			fs::remove_file(&file)?;
 		}
@@ -194,7 +192,7 @@ impl Buddy {
 		let conv = if let Ok(conv) = load_from_json::<Conv>(&conv_file) {
 			asst::get_thread(&self.ais_client, &conv.thread_id)
 				.await
-				.map_err(|_| format!("Cannot find thread_id for {:?} ", conv))?;
+				.map_err(|_| Error::CannotFindThreadIdForConv(conv.to_string()))?;
 			self.event_bus.send(BuddyEvent::ConvLoaded)?;
 			conv
 		} else {

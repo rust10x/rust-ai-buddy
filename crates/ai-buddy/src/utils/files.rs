@@ -1,4 +1,4 @@
-use crate::Result;
+use crate::{Error, Result};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use std::ffi::OsStr;
 use std::fs::{self, File};
@@ -13,7 +13,9 @@ pub fn bundle_to_file(files: Vec<PathBuf>, dst_file: &Path) -> Result<()> {
 
 	for file in files {
 		if !file.is_file() {
-			return Err(format!("Cannot bundle '{:?}' is not a file.", file).into());
+			return Err(Error::FileCannotBundleNoneFile(
+				file.to_string_lossy().to_string(),
+			));
 		}
 		let reader = get_reader(&file)?;
 
@@ -57,8 +59,10 @@ where
 {
 	let file = file.as_ref();
 
-	let file = File::create(file)
-		.map_err(|e| format!("Cannot create file '{:?}': {}", file, e))?;
+	let file = File::create(file).map_err(|e| Error::FileCannotCreate {
+		file: file.to_string_lossy().to_ascii_lowercase(),
+		cause: e,
+	})?;
 
 	serde_json::to_writer_pretty(file, data)?;
 
@@ -145,7 +149,7 @@ pub fn get_glob_set(globs: &[&str]) -> Result<GlobSet> {
 
 pub fn read_to_string(file: &Path) -> Result<String> {
 	if !file.is_file() {
-		return Err(format!("File not found: {}", file.display()).into());
+		return Err(Error::FileNotFound(file.to_string_lossy().to_string()));
 	}
 	let content = fs::read_to_string(file)?;
 
@@ -154,7 +158,7 @@ pub fn read_to_string(file: &Path) -> Result<String> {
 
 fn get_reader(file: &Path) -> Result<BufReader<File>> {
 	let Ok(file) = File::open(file) else {
-		return Err(format!("File not found: {}", file.display()).into());
+		return Err(Error::FileNotFound(file.display().to_string()));
 	};
 
 	Ok(BufReader::new(file))

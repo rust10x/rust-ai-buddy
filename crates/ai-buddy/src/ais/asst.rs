@@ -1,7 +1,7 @@
 use crate::ais::msg::{get_text_content, user_msg};
 use crate::ais::{AisClient, AisEvent, AsstId, AsstRef, FileId, FileRef, ThreadId};
 use crate::utils::files::XFile;
-use crate::Result;
+use crate::{Error, Result};
 use async_openai::types::{
 	AssistantObject, AssistantToolsRetrieval, CreateAssistantFileRequest,
 	CreateAssistantRequest, CreateFileRequest, CreateRunRequest,
@@ -218,7 +218,7 @@ pub async fn run_thread_msg(
 			RunStatus::Queued | RunStatus::InProgress => (),
 			other => {
 				term.write_str("\n")?;
-				return Err(format!("ERROR WHILE RUN: {:?}", other).into());
+				return Err(Error::RunError(other));
 			}
 		}
 
@@ -239,7 +239,7 @@ pub async fn get_first_thread_msg_content(
 		.data
 		.into_iter()
 		.next()
-		.ok_or_else(|| "No message found".to_string())?;
+		.ok_or(Error::NoMessageFoundInMessages)?;
 
 	let text = get_text_content(msg)?;
 

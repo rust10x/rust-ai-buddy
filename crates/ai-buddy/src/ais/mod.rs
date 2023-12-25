@@ -17,7 +17,7 @@ pub use types::*;
 
 use crate::event::EventBus;
 use crate::utils::files::get_glob_set;
-use crate::Result;
+use crate::{Error, Result};
 use async_openai::config::OpenAIConfig;
 use async_openai::Client;
 
@@ -55,7 +55,7 @@ pub fn new_ais_client(event_bus: EventBus) -> Result<AisClient> {
 	} else {
 		println!("No {ENV_OPENAI_API_KEY} env variable. Please set it.");
 
-		Err("No openai api key in env".into())
+		Err(Error::NoOpenAIApiKeyInEnv)
 	}
 }
 
@@ -71,7 +71,7 @@ async fn delete_org_files(oac: &OaClient, globs: &[&str]) -> Result<u32> {
 	let mut count = 0;
 
 	if globs.is_empty() {
-		return Err("asst::delete_all_files requires at least one glob".into());
+		return Err(Error::DeleteAllFilesRequiresAtLeastOneGlob);
 	}
 
 	let globs = get_glob_set(globs)?;

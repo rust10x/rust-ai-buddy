@@ -1,5 +1,6 @@
 use crate::event;
 use async_openai::error::OpenAIError;
+use async_openai::types::RunStatus;
 use derive_more::From;
 use std::io;
 use tokio::sync::broadcast;
@@ -8,8 +9,25 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, From)]
 pub enum Error {
-	#[from]
-	Custom(String),
+	// -- buddy
+	ShouldNotDeleteLocalFile(String),
+	CannotFindThreadIdForConv(String),
+
+	// -- ais
+	MessageImageNotSupported,
+	NoMessageInMessageObjectContent,
+	NoMessageFoundInMessages,
+	NoOpenAIApiKeyInEnv,
+	DeleteAllFilesRequiresAtLeastOneGlob,
+	RunError(RunStatus),
+
+	// -- Utils
+	FileNotFound(String),
+	FileCannotBundleNoneFile(String),
+	FileCannotCreate {
+		file: String,
+		cause: io::Error,
+	},
 
 	// -- Event
 	#[from]
@@ -28,12 +46,6 @@ pub enum Error {
 	GlobSet(globset::Error),
 	#[from]
 	OpenAI(OpenAIError),
-}
-
-impl From<&str> for Error {
-	fn from(val: &str) -> Self {
-		Error::Custom(val.to_string())
-	}
 }
 
 // region:    --- Error Boilerplate
