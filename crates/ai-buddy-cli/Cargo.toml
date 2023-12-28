@@ -23,7 +23,7 @@ workspace = true
 
 [dependencies]
 # -- App Libs
-ai-buddy = { version = "0.0.2",  path = "../ai-buddy"}
+ai-buddy = { version = "0.1.0",  path = "../ai-buddy"}
 # -- Async
 tokio = { version = "1", features = ["full"] }
 # -- Cli

@@ -39,11 +39,7 @@ pub enum Error {
 
 	// -- Externals
 	#[from]
-	Toml(toml::de::Error),
-	#[from]
-	SerdeJson(serde_json::Error),
-	#[from]
-	GlobSet(globset::Error),
+	SimpleFs(simple_fs::Error),
 	#[from]
 	OpenAI(OpenAIError),
 }

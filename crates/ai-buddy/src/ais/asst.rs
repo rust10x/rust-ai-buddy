@@ -1,6 +1,5 @@
 use crate::ais::msg::{get_text_content, user_msg};
 use crate::ais::{AisClient, AisEvent, AsstId, AsstRef, FileId, FileRef, ThreadId};
-use crate::utils::files::XFile;
 use crate::{Error, Result};
 use async_openai::types::{
 	AssistantObject, AssistantToolsRetrieval, CreateAssistantFileRequest,
@@ -8,8 +7,8 @@ use async_openai::types::{
 	CreateThreadRequest, ModifyAssistantRequest, RunStatus, ThreadObject,
 };
 use console::Term;
+use simple_fs::SPath;
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -286,12 +285,12 @@ pub async fn get_files_hashmap(
 pub async fn upload_file_by_name(
 	ais: &AisClient,
 	asst_id: &AsstId,
-	file: &Path,
+	file: &SPath,
 	force: bool,
 ) -> Result<(FileId, bool)> {
 	let oac = ais.oa_client();
 
-	let file_name = file.x_file_name();
+	let file_name = file.file_name();
 	let mut file_id_by_name = get_files_hashmap(ais, asst_id).await?;
 
 	let file_id = file_id_by_name.remove(file_name);
@@ -309,7 +308,7 @@ pub async fn upload_file_by_name(
 		let oa_files = oac.files();
 		if let Err(err) = oa_files.delete(&file_id).await {
 			ais.event_bus().send(AisEvent::OrgFileCantDelete {
-				file_ref: FileRef::new(file.to_string_lossy(), file_id.clone()),
+				file_ref: FileRef::new(file, file_id.clone()),
 				cause: err.to_string(),
 			})?;
 		}
@@ -328,7 +327,7 @@ pub async fn upload_file_by_name(
 
 	// -- Upload and attach the file.
 	ais.event_bus().send(AisEvent::OrgFileUploading {
-		file_name: file.x_file_name().to_string(),
+		file_name: file.file_name().to_string(),
 	})?;
 
 	// Upload file.
@@ -343,7 +342,7 @@ pub async fn upload_file_by_name(
 	// Update print.
 	ais.event_bus()
 		.send(AisEvent::OrgFileUploaded(FileRef::new(
-			file.to_string_lossy(),
+			file,
 			oa_file.id.clone().into(),
 		)))?;
 

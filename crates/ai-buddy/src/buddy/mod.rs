@@ -24,13 +24,13 @@ use crate::buddy::config::Config;
 use tokio::sync::broadcast::Receiver;
 // use crate::event::EventBus;
 use crate::event::{Event, EventBus};
-use crate::utils::files::{
-	bundle_to_file, ensure_dir, list_files, load_from_json, load_from_toml,
-	read_to_string, save_to_json,
-};
+use crate::utils::files::bundle_to_file;
 use crate::{Error, Result};
 use derive_more::{Deref, From};
 use serde::{Deserialize, Serialize};
+use simple_fs::{
+	ensure_dir, list_files, load_json, load_toml, read_to_string, save_json, SPath,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -64,7 +64,7 @@ impl Buddy {
 		let event_bus = event_bus.unwrap_or_else(EventBus::new);
 
 		// -- Load from the directory
-		let config: Config = load_from_toml(dir.join(BUDDY_TOML))?;
+		let config: Config = load_toml(dir.join(BUDDY_TOML))?;
 
 		// -- Get or Create the OpenAI Assistant
 		let ais_client = new_ais_client(event_bus.clone())?;
@@ -124,14 +124,13 @@ impl Buddy {
 		// -- Clean the .buddy/files left over.
 		let exclude_element = format!("*{}*", &self.asst_id);
 		for file in list_files(
-			&data_files_dir,
+			data_files_dir,
 			Some(&["*.rs", "*.md"]),
 			Some(&[&exclude_element]),
 		)? {
-			let file_str = file.to_string_lossy();
 			// Safeguard
-			if !file_str.contains(".buddy") {
-				return Err(Error::ShouldNotDeleteLocalFile(file_str.to_string()));
+			if !file.to_str().contains(".buddy") {
+				return Err(Error::ShouldNotDeleteLocalFile(file.to_string()));
 			}
 			fs::remove_file(&file)?;
 		}
@@ -156,9 +155,11 @@ impl Buddy {
 						bundle.dst_ext
 					);
 					let bundle_file = self.data_files_dir()?.join(bundle_file_name);
+					// Note: Here bundle_file is an SPath because the file does not exist (SFile construction does an is_file() check by contract)
+					let bundle_file = SPath::from_path(bundle_file)?;
 
-					// If it does not exist, then we will  force a reupload.
-					let force_reupload = recreate || !bundle_file.exists();
+					// If it does not exist, then we will force a reupload
+					let force_reupload = recreate || !bundle_file.path().exists();
 
 					// Rebundle no matter if exist or not (to check).
 					bundle_to_file(files, &bundle_file)?;
@@ -189,7 +190,7 @@ impl Buddy {
 			fs::remove_file(&conv_file)?;
 		}
 
-		let conv = if let Ok(conv) = load_from_json::<Conv>(&conv_file) {
+		let conv = if let Ok(conv) = load_json::<Conv>(&conv_file) {
 			asst::get_thread(&self.ais_client, &conv.thread_id)
 				.await
 				.map_err(|_| Error::CannotFindThreadIdForConv(conv.to_string()))?;
@@ -199,7 +200,7 @@ impl Buddy {
 			let thread_id = asst::create_thread(&self.ais_client).await?;
 			self.event_bus.send(BuddyEvent::ConvCreated)?;
 			let conv = thread_id.into();
-			save_to_json(&conv_file, &conv)?;
+			save_json(&conv_file, &conv)?;
 			conv
 		};
 
