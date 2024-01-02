@@ -9,7 +9,3 @@ members = [
     "crates/ai-buddy-cli", # The CLI for ai-buddy  
     "crates/ai-buddy-app", # (Upcoming) Tauri App
 ]
-
-[lints.rust]
-unsafe_code = "forbid"
-# unused = "allow" # For early dev.
