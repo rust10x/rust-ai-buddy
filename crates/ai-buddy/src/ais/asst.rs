@@ -265,7 +265,7 @@ pub async fn get_files_hashmap(
 
 	// -- Get all files for org (those files have .filename)
 	let oa_files = oac.files();
-	let org_files = oa_files.list().await?.data;
+	let org_files = oa_files.list(&[("purpose", "assistants")]).await?.data;
 
 	// -- Build or file_name:file_id hashmap
 	let file_id_by_name: HashMap<String, FileId> = org_files

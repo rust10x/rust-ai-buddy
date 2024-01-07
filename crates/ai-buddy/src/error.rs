@@ -21,14 +21,6 @@ pub enum Error {
 	DeleteAllFilesRequiresAtLeastOneGlob,
 	RunError(RunStatus),
 
-	// -- Utils
-	FileNotFound(String),
-	FileCannotBundleNoneFile(String),
-	FileCannotCreate {
-		file: String,
-		cause: io::Error,
-	},
-
 	// -- Event
 	#[from]
 	BoadcastSend(broadcast::error::SendError<event::Event>),

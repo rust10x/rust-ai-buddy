@@ -67,7 +67,7 @@ pub fn new_ais_client(event_bus: EventBus) -> Result<AisClient> {
 #[allow(dead_code)]
 async fn delete_org_files(oac: &OaClient, globs: &[&str]) -> Result<u32> {
 	let oa_files = oac.files();
-	let files = oa_files.list().await?;
+	let files = oa_files.list(&[("purpose", "assistants")]).await?;
 	let mut count = 0;
 
 	if globs.is_empty() {
